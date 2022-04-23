@@ -2,10 +2,18 @@
 @author: Yuanhao Cai
 @date:  2020.03
 """
+# ROHAN MACHINE SPECIFIC
+# TODO: fix the sys hacks, run distributed training
+# as per availability
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = '5'
+import os.path as osp
+import sys
+sys.path.append(osp.join(osp.dirname(__file__), "..", ".."))
 
 import argparse
 import time
-
+import pdb
 import torch
 from tensorboardX import SummaryWriter
 

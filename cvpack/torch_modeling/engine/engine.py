@@ -63,6 +63,7 @@ class Engine(object):
         else:
             # todo check non-distributed training
             self.world_rank = 1
+            self.local_rank = 0
             self.devices = parse_torch_devices(self.args.devices)
 
     def setup_log(self, name='train', log_dir=None, file_name=None):

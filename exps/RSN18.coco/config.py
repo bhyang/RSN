@@ -4,9 +4,13 @@
 @date:  2020.03
 """
 
+
 import os, getpass
 import os.path as osp
 import argparse
+
+import sys
+sys.path.append(osp.join(osp.dirname(__file__), "..", ".."))
 
 from easydict import EasyDict as edict
 from dataset.attribute import load_dataset
