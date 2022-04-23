@@ -13,15 +13,18 @@ from cvpack.dataset import torch_samplers
 from dataset.attribute import load_dataset
 from dataset.COCO.coco import COCODataset
 from dataset.MPII.mpii import MPIIDataset
+from dataset.anime.anime import AnimeDataset
 
 
 def get_train_loader(
-        cfg, num_gpu, is_dist=True, is_shuffle=True, start_iter=0):
+        cfg, num_gpu, is_dist=True, is_shuffle=True, start_iter=0, load_anime_dataset=False):
     # -------- get raw dataset interface -------- #
     normalize = transforms.Normalize(mean=cfg.INPUT.MEANS, std=cfg.INPUT.STDS)
     transform = transforms.Compose([transforms.ToTensor(), normalize])
     attr = load_dataset(cfg.DATASET.NAME)
-    if cfg.DATASET.NAME == 'COCO':
+    if load_anime_dataset:
+        Dataset = AnimeDataset
+    elif cfg.DATASET.NAME == 'COCO':
         Dataset = COCODataset 
     elif cfg.DATASET.NAME == 'MPII':
         Dataset = MPIIDataset
@@ -64,7 +67,12 @@ def get_train_loader(
 
             return images, valids, labels
 
-    data_loader = torch.utils.data.DataLoader(
+    if load_anime_dataset:
+        data_loader = torch.utils.data.DataLoader(
+                dataset, num_workers=cfg.DATALOADER.NUM_WORKERS,
+                batch_sampler=batch_sampler,)
+    else:
+        data_loader = torch.utils.data.DataLoader(
             dataset, num_workers=cfg.DATALOADER.NUM_WORKERS,
             batch_sampler=batch_sampler,
             collate_fn=BatchCollator(cfg.DATALOADER.SIZE_DIVISIBILITY), )
@@ -72,12 +80,14 @@ def get_train_loader(
     return data_loader
 
 
-def get_test_loader(cfg, num_gpu, local_rank, stage, is_dist=True):
+def get_test_loader(cfg, num_gpu, local_rank, stage, is_dist=True, load_anime_dataset=False):
     # -------- get raw dataset interface -------- #
     normalize = transforms.Normalize(mean=cfg.INPUT.MEANS, std=cfg.INPUT.STDS)
     transform = transforms.Compose([transforms.ToTensor(), normalize])
     attr = load_dataset(cfg.DATASET.NAME)
-    if cfg.DATASET.NAME == 'COCO':
+    if load_anime_dataset:
+        Dataset = AnimeDataset
+    elif cfg.DATASET.NAME == 'COCO':
         Dataset = COCODataset 
     elif cfg.DATASET.NAME == 'MPII':
         Dataset = MPIIDataset
