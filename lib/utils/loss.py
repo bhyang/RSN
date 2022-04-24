@@ -6,6 +6,8 @@
 import torch
 import torch.nn as nn
 
+import pdb
+
 class JointsL2Loss(nn.Module):
     def __init__(self, has_ohkm=False, topk=8, thresh1=1, thresh2=0):
         super(JointsL2Loss, self).__init__()
@@ -31,7 +33,6 @@ class JointsL2Loss(nn.Module):
                 gt = gt * weight 
 
             tmp_loss = self.calculate(pred, gt)
-
             if self.has_ohkm:
                 tmp_loss = tmp_loss.mean(dim=1) 
                 weight = torch.gt(valid[i].squeeze(), self.t2).float()

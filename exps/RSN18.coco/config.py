@@ -22,7 +22,7 @@ class Config:
     USER = getpass.getuser()
     ROOT_DIR = os.environ['RSN_HOME']
     OUTPUT_DIR = osp.join(ROOT_DIR, 'model_logs', USER,
-            osp.split(osp.split(osp.realpath(__file__))[0])[1])
+                          osp.split(osp.split(osp.realpath(__file__))[0])[1])
     TEST_DIR = osp.join(OUTPUT_DIR, 'test_dir')
     TENSORBOARD_DIR = osp.join(OUTPUT_DIR, 'tb_dir') 
 

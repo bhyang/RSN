@@ -6,7 +6,7 @@
 # TODO: fix the sys hacks, run distributed training
 # as per availability
 import os
-GPUS = '0'
+GPUS = '3'
 os.environ["CUDA_VISIBLE_DEVICES"] = GPUS
 os.environ["WORLD_SIZE"] = str(len(GPUS.split(",")))
 import os.path as osp
@@ -50,7 +50,7 @@ def main():
         cfg.SOLVER.MAX_ITER = int(cfg.SOLVER.MAX_ITER * 8 / num_gpu)
         optimizer = make_optimizer(cfg, model, num_gpu)
         scheduler = make_lr_scheduler(cfg, optimizer)
-        pdb.set_trace()
+
         engine.register_state(
             scheduler=scheduler, model=model, optimizer=optimizer)
 

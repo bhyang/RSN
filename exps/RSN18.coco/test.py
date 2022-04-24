@@ -2,8 +2,16 @@
 @author: Yuanhao Cai
 @date:  2020.03
 """
-
+import pdb
 import os
+GPUS = '1'
+os.environ["CUDA_VISIBLE_DEVICES"] = GPUS
+os.environ["WORLD_SIZE"] = str(len(GPUS.split(",")))
+import os.path as osp
+import sys
+sys.path.append(osp.join(osp.dirname(__file__), "..", ".."))
+
+
 import argparse
 from tqdm import tqdm
 import numpy as np
@@ -77,7 +85,9 @@ def compute_on_dataset(model, data_loader, device):
     cpu_device = torch.device("cpu")
 
     data = tqdm(data_loader) if is_main_process() else data_loader
-    for _, batch in enumerate(data):
+    for idx, batch in enumerate(data):
+        if idx > 100:
+            break
         imgs, scores, centers, scales, img_ids = batch
 
         imgs = imgs.to(device)
@@ -191,8 +201,8 @@ def main():
         with open(results_path, 'w') as f:
             json.dump(results, f)
         logger.info("Get all results.")
-
-        data_loader.ori_dataset.evaluate(results_path)
+        #pdb.set_trace()
+        #data_loader.ori_dataset.evaluate(results_path)
 
 
 if __name__ == '__main__':

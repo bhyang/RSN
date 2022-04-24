@@ -8,8 +8,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.checkpoint import checkpoint
 
-from revgrad import RevGrad
-
 from lib.utils.loss import JointsL2Loss
 
 

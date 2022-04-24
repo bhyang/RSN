@@ -6,9 +6,10 @@
 # TODO: fix the sys hacks, run distributed training
 # as per availability
 import os
-GPUS = '0'
+GPUS = '1, 2'
 os.environ["CUDA_VISIBLE_DEVICES"] = GPUS
-os.environ["WORLD_SIZE"] = str(len(GPUS.split(",")))
+NUM_GPUS = len(GPUS.split(","))
+os.environ["WORLD_SIZE"] = str(NUM_GPUS)
 os.environ["RSN_HOME"] = "/home/rchoudhu/courses/vlr/project/RSN"
 import os.path as osp
 import sys
@@ -19,6 +20,8 @@ import time
 import pdb
 from itertools import cycle
 import torch
+# is this symptomatic of a bug
+torch.multiprocessing.set_sharing_strategy('file_system')
 from tensorboardX import SummaryWriter
 
 from cvpack.torch_modeling.engine.engine import Engine
@@ -39,14 +42,12 @@ def main():
         args = parser.parse_args()
         ensure_dir(cfg.OUTPUT_DIR)
 
-        print("initializing model...")
         model = RSNReversalNet(cfg, run_efficient=cfg.RUN_EFFICIENT)
         device = torch.device(cfg.MODEL.DEVICE)
         model.to(device)
 
         num_gpu = len(engine.devices) 
         # default num_gpu: 8, adjust iter settings
-        print("Making scheduler and optimizers...")
         cfg.SOLVER.CHECKPOINT_PERIOD = \
                 int(cfg.SOLVER.CHECKPOINT_PERIOD * 8 / num_gpu)
         cfg.SOLVER.MAX_ITER = int(cfg.SOLVER.MAX_ITER * 8 / num_gpu)
@@ -57,11 +58,11 @@ def main():
             scheduler=scheduler, model=model, optimizer=optimizer)
 
         if engine.distributed:
-            print("Setting up distributed data parallel...")
+            #print("Setting up distributed data parallel...")
             model = torch.nn.parallel.DistributedDataParallel(
                 model, device_ids=[args.local_rank],
                 broadcast_buffers=False, )
-            print("Finished setting DDP.")
+            #print("Finished setting DDP.")
 
         if engine.continue_state_object:
             engine.restore_checkpoint(is_restore=False)
@@ -69,7 +70,7 @@ def main():
             if cfg.MODEL.WEIGHT:
                 engine.load_checkpoint(cfg.MODEL.WEIGHT, is_restore=False)
 
-        print("Getting train loader ...")
+        #print("Getting train loader ...")
         data_loader = get_train_loader(cfg, num_gpu=num_gpu, is_dist=engine.distributed)
         anime_loader = get_train_loader(cfg, num_gpu=num_gpu, is_dist=engine.distributed, load_anime_dataset=True)
 
@@ -84,19 +85,28 @@ def main():
         model.train()
 
         time1 = time.time()
-        data_iter = zip(cycle(anime_loader), data_loader)
-        for iteration, (anime_imgs, (images, valids, labels)) in enumerate(
-                data_iter, engine.state.iteration):
+        anime_iterator = iter(anime_loader)
+        for iteration, (images, valids, labels) in enumerate(
+                data_loader, engine.state.iteration):
+            # Access an anime image. Need to do it this way 
+            # to avoid memory leaks.
+            try:
+                anime_images = next(anime_iterator)
+            except StopIteration:
+                anime_iterator = iter(anime_loader)
+                anime_images = next(anime_iterator)
+            
             iteration = iteration + 1
-
+            anime_batch_size = anime_images.shape[0]
             batch_size = images.shape[0]
+
             images = images.to(device)
             valids = valids.to(device)
             labels = labels.to(device)
             normal_domain_labels = torch.ones(batch_size, 1).cuda()
 
-            anime_images = images.to(device)
-            anime_domain_labels = torch.zeros(batch_size, 1).cuda()
+            anime_images = anime_images.to(device)
+            anime_domain_labels = torch.zeros(anime_batch_size, 1).cuda()
 
 
             scheduler.step()
