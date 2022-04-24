@@ -1,17 +1,15 @@
 """
-@author: Rohan Choudhury
-@date:  2022.04
+@author: Yuanhao Cai
+@date:  2020.03
 """
-
+import pdb
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.checkpoint import checkpoint
 
-from revgrad import RevGrad
-
 from lib.utils.loss import JointsL2Loss
-
+from revgrad import RevGrad
 
 class conv_bn_relu(nn.Module):
 
@@ -312,6 +310,25 @@ class Upsample_module(nn.Module):
         return res, skip1, skip2, cross_conv
 
 
+class DomainClassifier(nn.Module):
+    def __init__(self):
+        super(DomainClassifier, self).__init__()
+        self.reversal = RevGrad()
+        self.classifier = nn.Sequential(
+            # 24576 is the flattened size of the downsample output
+            nn.Linear(24576, 512),
+            nn.Linear(512, 32),
+            nn.Linear(32, 1)
+        )
+
+    def forward(self, x):
+        x = x.flatten(start_dim=1)
+        x = self.reversal(x)
+        output = self.classifier(x)
+
+        return output
+
+
 class Single_stage_module(nn.Module):
 
     def __init__(self, output_chl_num, output_shape, has_skip=False,
@@ -328,18 +345,21 @@ class Single_stage_module(nn.Module):
                 self.has_skip, efficient, self.zero_init_residual)
         self.upsample = Upsample_module(output_chl_num, output_shape,
                 self.chl_num, self.gen_skip, self.gen_cross_conv, efficient)
+        self.domain_classifier = DomainClassifier()
 
     def forward(self, x, skip1, skip2):
         x4, x3, x2, x1 = self.downsample(x, skip1, skip2)
+        #pdb.set_trace()
         res, skip1, skip2, cross_conv = self.upsample(x4, x3, x2, x1)
-        
-        return res, skip1, skip2, cross_conv
+        domain_class = self.domain_classifier(x4)
+        #pdb.set_trace() 
+        return res, skip1, skip2, cross_conv, domain_class
 
 
-class RSN(nn.Module):
+class RSNReversalNet(nn.Module):
     
     def __init__(self, cfg, run_efficient=False, **kwargs):
-        super(RSN, self).__init__()
+        super(RSNReversalNet, self).__init__()
         self.top = ResNet_top()
         self.stage_num = cfg.MODEL.STAGE_NUM
         self.output_chl_num = cfg.DATASET.KEYPOINT.NUM
@@ -372,14 +392,23 @@ class RSN(nn.Module):
                     )
             setattr(self, 'stage%d' % i, self.mspn_modules[i])
 
-    def _calculate_loss(self, outputs, valids, labels):
+    def _calculate_loss(self, outputs, valids, labels, domain_cls, domain_labels):
         # outputs: stg1 -> stg2 -> ... , res1: bottom -> up
         # valids: (n, 17, 1), labels: (n, 5, 17, h, h)
+        
+        # If anime domain, return only domain loss. 
+        # If normal, return all.
+        #pdb.set_trace()
+        domain_loss = F.binary_cross_entropy_with_logits(domain_cls, domain_labels, reduction='sum')
+        if torch.min(domain_labels) == 0:
+            return dict(domain_loss=domain_loss)
+
+        # Start with the domain loss
+        loss = 0
         loss1 = JointsL2Loss()
         if self.ohkm:
             loss2 = JointsL2Loss(has_ohkm=self.ohkm, topk=self.topk)
         
-        loss = 0
         for i in range(self.stage_num):
             for j in range(4):
                 ind = j
@@ -397,27 +426,29 @@ class RSN(nn.Module):
 
                 loss += tmp_loss
 
-        return dict(total_loss=loss)
+        return dict(pose_loss=loss, domain_loss=domain_loss)
         
-    def forward(self, imgs, valids=None, labels=None):
+    def forward(self, imgs, domains, valids=None, labels=None):
         x = self.top(imgs)
         skip1 = None
         skip2 = None
         outputs = list()
+        domain_classifications = list()
         for i in range(self.stage_num):
-            res, skip1, skip2, x = eval('self.stage' + str(i))(x, skip1, skip2)
+            res, skip1, skip2, x, domain_class = eval('self.stage' + str(i))(x, skip1, skip2)
             outputs.append(res)
+            domain_classifications.append(domain_class)
 
         if valids is None and labels is None:
             return outputs[-1][-1]
         else:
-            return self._calculate_loss(outputs, valids, labels)
+            return self._calculate_loss(outputs, valids, labels, domain_classifications[0], domains)
 
 
 
 if __name__ == '__main__':
     from config import cfg
-    mspn = RSN(cfg, run_efficient=cfg.RUN_EFFICIENT)
+    mspn = RSNReversalNet(cfg, run_efficient=cfg.RUN_EFFICIENT)
     imgs = torch.randn(2, 3, 256, 192)
     valids = torch.randn(2, 17, 1)
     labels = torch.randn(2, 5, 17, 64, 48)

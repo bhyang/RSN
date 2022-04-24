@@ -4,7 +4,7 @@ import os
 import os.path as osp
 import time
 import argparse
-
+import pdb
 import torch
 import torch.distributed as dist
 
@@ -51,7 +51,7 @@ class Engine(object):
 
         if 'WORLD_SIZE' in os.environ:
             self.distributed = int(os.environ['WORLD_SIZE']) > 1
-
+        #pdb.set_trace()
         if self.distributed:
             self.local_rank = self.args.local_rank
             self.world_size = int(os.environ['WORLD_SIZE'])

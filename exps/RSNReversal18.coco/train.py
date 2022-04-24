@@ -1,6 +1,6 @@
 """
-@author: Yuanhao Cai
-@date:  2020.03
+@author: Rohan Choudhury
+@date:  2022.04
 """
 # ROHAN MACHINE SPECIFIC
 # TODO: fix the sys hacks, run distributed training
@@ -9,6 +9,7 @@ import os
 GPUS = '0'
 os.environ["CUDA_VISIBLE_DEVICES"] = GPUS
 os.environ["WORLD_SIZE"] = str(len(GPUS.split(",")))
+os.environ["RSN_HOME"] = "/home/rchoudhu/courses/vlr/project/RSN"
 import os.path as osp
 import sys
 sys.path.append(osp.join(osp.dirname(__file__), "..", ".."))
@@ -16,6 +17,7 @@ sys.path.append(osp.join(osp.dirname(__file__), "..", ".."))
 import argparse
 import time
 import pdb
+from itertools import cycle
 import torch
 from tensorboardX import SummaryWriter
 
@@ -23,7 +25,7 @@ from cvpack.torch_modeling.engine.engine import Engine
 from cvpack.utils.pyt_utils import ensure_dir
 
 from config import cfg
-from network import RSN 
+from network import RSNReversalNet
 from lib.utils.dataloader import get_train_loader
 from lib.utils.solver import make_lr_scheduler, make_optimizer
 
@@ -38,7 +40,7 @@ def main():
         ensure_dir(cfg.OUTPUT_DIR)
 
         print("initializing model...")
-        model = RSN(cfg, run_efficient=cfg.RUN_EFFICIENT)
+        model = RSNReversalNet(cfg, run_efficient=cfg.RUN_EFFICIENT)
         device = torch.device(cfg.MODEL.DEVICE)
         model.to(device)
 
@@ -50,7 +52,7 @@ def main():
         cfg.SOLVER.MAX_ITER = int(cfg.SOLVER.MAX_ITER * 8 / num_gpu)
         optimizer = make_optimizer(cfg, model, num_gpu)
         scheduler = make_lr_scheduler(cfg, optimizer)
-        pdb.set_trace()
+
         engine.register_state(
             scheduler=scheduler, model=model, optimizer=optimizer)
 
@@ -69,6 +71,7 @@ def main():
 
         print("Getting train loader ...")
         data_loader = get_train_loader(cfg, num_gpu=num_gpu, is_dist=engine.distributed)
+        anime_loader = get_train_loader(cfg, num_gpu=num_gpu, is_dist=engine.distributed, load_anime_dataset=True)
 
         # ------------ do training ---------------------------- #
         logger.info("\n\nStart training with pytorch version {}".format(
@@ -81,17 +84,31 @@ def main():
         model.train()
 
         time1 = time.time()
-        for iteration, (images, valids, labels) in enumerate(
-                data_loader, engine.state.iteration):
+        data_iter = zip(cycle(anime_loader), data_loader)
+        for iteration, (anime_imgs, (images, valids, labels)) in enumerate(
+                data_iter, engine.state.iteration):
             iteration = iteration + 1
+
+            batch_size = images.shape[0]
             images = images.to(device)
             valids = valids.to(device)
             labels = labels.to(device)
+            normal_domain_labels = torch.ones(batch_size, 1).cuda()
+
+            anime_images = images.to(device)
+            anime_domain_labels = torch.zeros(batch_size, 1).cuda()
+
 
             scheduler.step()
-            loss_dict = model(images, valids, labels)
-            losses = sum(loss for loss in loss_dict.values())
+            normal_loss_dict = model(images, normal_domain_labels, valids, labels)
+            pose_loss = normal_loss_dict['pose_loss']
+            domain_loss = normal_loss_dict['domain_loss']
 
+            anime_loss_dict = model(anime_images, anime_domain_labels, valids, labels)
+            anime_domain_loss = anime_loss_dict['domain_loss']
+
+            # Start with equal weighting.
+            losses = pose_loss + domain_loss + anime_domain_loss
             optimizer.zero_grad()
             losses.backward()
             optimizer.step()
@@ -103,10 +120,16 @@ def main():
                 if iteration % 20 == 0 or iteration == max_iter:
                     log_str = 'Iter:%d, LR:%.1e, ' % (
                         iteration, optimizer.param_groups[0]["lr"] / num_gpu)
-                    for key in loss_dict:
+                    log_str += 'total_loss' + ': %.3f, ' % float(pose_loss)
+                    for key in normal_loss_dict:
                         tb_writer.add_scalar(
-                            key,  loss_dict[key].mean(), global_step=iteration)
-                        log_str += key + ': %.3f, ' % float(loss_dict[key])
+                            key,  normal_loss_dict[key].mean(), global_step=iteration)
+                        log_str += key + ': %.3f, ' % float(normal_loss_dict[key])
+
+                    for key in anime_loss_dict:
+                        tb_writer.add_scalar(
+                            "anime_" + key, anime_loss_dict[key].mean(), global_step=iteration)
+                        log_str += "anime_" + key + ': %.3f, ' % float(anime_loss_dict[key])
 
                     time2 = time.time()
                     elapsed_time = time2 - time1
