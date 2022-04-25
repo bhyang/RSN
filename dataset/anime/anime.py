@@ -14,12 +14,16 @@ from dataset.JointsDataset import JointsDataset
 
 class AnimeDataset(JointsDataset):
 
-    def __init__(self, DATASET, stage, transform=None):
+    def __init__(self, DATASET, stage, transform=None, anime_seq=None):
         super().__init__(DATASET, stage, transform)
         self.cur_dir = os.path.split(os.path.realpath(__file__))[0]
 
         self.image_dir = os.path.join(self.cur_dir, "images", "train" if stage == "train" else "val")
         self.image_paths = glob.glob(os.path.join(self.image_dir, "*.png"))
+        if anime_seq is not None:
+            self.image_paths = glob.glob(os.path.join(self.image_dir, "%s*.png" % anime_seq))
+        # Hack to keep it sequential if not shuffled.
+        self.image_paths = sorted(self.image_paths, key=lambda x : int(os.path.splitext(x[-10:])[0]))
 
     def __len__(self):
         return len(self.image_paths)

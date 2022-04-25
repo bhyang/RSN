@@ -130,7 +130,7 @@ def main():
                 if iteration % 20 == 0 or iteration == max_iter:
                     log_str = 'Iter:%d, LR:%.1e, ' % (
                         iteration, optimizer.param_groups[0]["lr"] / num_gpu)
-                    log_str += 'total_loss' + ': %.3f, ' % float(pose_loss)
+                    log_str += 'total_loss' + ': %.3f, ' % float(losses)
                     for key in normal_loss_dict:
                         tb_writer.add_scalar(
                             key,  normal_loss_dict[key].mean(), global_step=iteration)

@@ -25,6 +25,7 @@ class Config:
     OUTPUT_DIR = osp.join(ROOT_DIR, 'model_logs', USER,
             osp.split(osp.split(osp.realpath(__file__))[0])[1])
     TEST_DIR = osp.join(OUTPUT_DIR, 'test_dir')
+    VIZ_DIR = osp.join(OUTPUT_DIR, 'viz_dir')
     TENSORBOARD_DIR = osp.join(OUTPUT_DIR, 'tb_dir') 
 
     # -------- Data Config -------- #
@@ -85,7 +86,9 @@ class Config:
     RUN_EFFICIENT = False 
     # -------- Test Config -------- #
     TEST = dataset.TEST
-    TEST.IMS_PER_GPU = 32 
+    # ONLY ONE IMAGE PER GPU AT TEST TIME!
+    # WANT TO RUN THIS ONE AT A TIME.
+    TEST.IMS_PER_GPU = 1
 
 
 config = Config()

@@ -4,7 +4,8 @@
 """
 
 import math
-
+import pdb
+from random import shuffle
 import torch
 import torchvision.transforms as transforms
 
@@ -29,7 +30,7 @@ def get_train_loader(
     elif cfg.DATASET.NAME == 'MPII':
         Dataset = MPIIDataset
     dataset = Dataset(attr, 'train', transform)
-
+    
     # -------- make samplers -------- #
     if is_dist:
         sampler = torch_samplers.DistributedSampler(
@@ -70,17 +71,18 @@ def get_train_loader(
     if load_anime_dataset:
         data_loader = torch.utils.data.DataLoader(
                 dataset, num_workers=cfg.DATALOADER.NUM_WORKERS,
-                batch_sampler=batch_sampler,)
+                batch_sampler=batch_sampler,
+                shuffle=False)
     else:
         data_loader = torch.utils.data.DataLoader(
             dataset, num_workers=cfg.DATALOADER.NUM_WORKERS,
             batch_sampler=batch_sampler,
-            collate_fn=BatchCollator(cfg.DATALOADER.SIZE_DIVISIBILITY), )
+            collate_fn=BatchCollator(cfg.DATALOADER.SIZE_DIVISIBILITY),)
 
     return data_loader
 
 
-def get_test_loader(cfg, num_gpu, local_rank, stage, is_dist=True, load_anime_dataset=False):
+def get_test_loader(cfg, num_gpu, local_rank, stage, is_dist=True, load_anime_dataset=False, anime_seq=None):
     # -------- get raw dataset interface -------- #
     normalize = transforms.Normalize(mean=cfg.INPUT.MEANS, std=cfg.INPUT.STDS)
     transform = transforms.Compose([transforms.ToTensor(), normalize])
@@ -92,6 +94,8 @@ def get_test_loader(cfg, num_gpu, local_rank, stage, is_dist=True, load_anime_da
     elif cfg.DATASET.NAME == 'MPII':
         Dataset = MPIIDataset
     dataset = Dataset(attr, stage, transform)
+    if anime_seq is not None:
+        dataset = AnimeDataset(attr, stage, transform, anime_seq=anime_seq)
 
     # -------- split dataset to gpus -------- #
     num_data = dataset.__len__()
@@ -124,10 +128,18 @@ def get_test_loader(cfg, num_gpu, local_rank, stage, is_dist=True, load_anime_da
 
             return images, scores, centers, scales, image_ids 
 
-    data_loader = torch.utils.data.DataLoader(
-            subset, num_workers=cfg.DATALOADER.NUM_WORKERS,
-            batch_sampler=batch_sampler,
-            collate_fn=BatchCollator(cfg.DATALOADER.SIZE_DIVISIBILITY), )
+    if load_anime_dataset:
+        data_loader = torch.utils.data.DataLoader(
+                dataset, num_workers=cfg.DATALOADER.NUM_WORKERS, shuffle=False)
+    else:
+        data_loader = torch.utils.data.DataLoader(
+                subset, num_workers=cfg.DATALOADER.NUM_WORKERS,
+                batch_sampler=batch_sampler,
+                collate_fn=BatchCollator(cfg.DATALOADER.SIZE_DIVISIBILITY), )
     data_loader.ori_dataset = dataset
 
     return data_loader
+
+def get_anime_seq_loader(cfg, num_gpu, local_rank, stage, is_dist, anime_seq):
+    return get_test_loader(cfg, num_gpu, local_rank, stage, is_dist=is_dist, \
+        load_anime_dataset=True, anime_seq=anime_seq)
